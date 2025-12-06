@@ -1,1 +1,93 @@
 .env
+# ---------------------------------------------------------
+# Python
+# ---------------------------------------------------------
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+*.pdb
+*.egg-info/
+*.egg
+*.log
+*.tmp
+*.cache
+
+# Virtual environments
+venv/
+.venv/
+env/
+ENV/
+
+# Jupyter
+.ipynb_checkpoints/
+
+# ---------------------------------------------------------
+# Project: RAG Assignments
+# ---------------------------------------------------------
+
+# Chat session history
+data/chat_sessions/*.json
+
+# Extracted documents and chunk files
+data/extracted_content/*.json
+data/extracted_content/*.txt
+
+# Vector store persistence
+data/vector_stores/
+data/faiss_store/
+data/chroma_store/
+data/chroma_store/*
+
+# Temporary embeddings or checkpoints
+data/embeddings/
+*.faiss
+*.npy
+
+# Exported chat logs (optional)
+exports/
+
+# ---------------------------------------------------------
+# Credentials (IMPORTANT)
+# ---------------------------------------------------------
+# Never commit keys or secrets
+.env
+*.env
+apikey.txt
+secrets.json
+
+# For EPAM DIAL key
+DIAL_API_KEY
+dial_key.txt
+
+# ---------------------------------------------------------
+# Streamlit
+# ---------------------------------------------------------
+.streamlit/
+**/.streamlit/credentials.toml
+**/.streamlit/secrets.toml
+
+# Streamlit cache
+.streamlit/
+~/.streamlit/
+
+# ---------------------------------------------------------
+# Editors / IDE
+# ---------------------------------------------------------
+
+# VS Code
+.vscode/
+*.code-workspace
+
+# PyCharm
+.idea/
+
+# ---------------------------------------------------------
+# OS / Misc
+# ---------------------------------------------------------
+.DS_Store
+Thumbs.db
+desktop.ini
+
+data/
+vector_comparison/
