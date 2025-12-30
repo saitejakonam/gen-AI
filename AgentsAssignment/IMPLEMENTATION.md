@@ -44,7 +44,13 @@ The system simulates a real-world hotel workflow with clear separation of concer
 
 ## 🔁 Workflow
 
-
+START
+↓
+Booking Agent
+↓
+[Booking Confirmed?]
+├─ Yes → Housekeeping Agent → Customer Service Agent → END
+└─ No → Customer Service Agent → END
 
 
 If booking fails, the workflow routes directly to **Customer Service**.
@@ -146,7 +152,9 @@ Create a `.env` file in the project root:
 - 🧹 Room cleaned and ready
 - 🎧 AI-generated customer confirmation message
 
-##🧠 Key Design Decisions
+---
+
+## 🧠 Key Design Decisions
 
 - Async agents for scalability
 
@@ -157,6 +165,8 @@ Create a `.env` file in the project root:
 - JSON persistence instead of a database
 
 - AI limited to customer-facing communication only
+
+---
 
 ## 🔮 Future Enhancements (Out of Scope)
 
