@@ -16,16 +16,22 @@ class RequestState(BaseModel):
     """
     Normalized user request state.
     """
-    action: str = "create"                 # create | update | cancel
-    customer: str
+    intent: str                                  # booking | feedback
+
+    # Booking-related (ONLY for booking intent)
+    action: Optional[str] = None                 # create | update | cancel
+    customer: Optional[str] = None
     room_type: Optional[str] = None
-    nights: int = 1
+    nights: Optional[int] = None
     check_in: Optional[str] = None
     booking_id: Optional[str] = None
+
+    # Customer service
     complaint: Optional[str] = None
     message: Optional[str] = None
-    special_requests: List[str] = Field(default_factory=list)
 
+    # Misc
+    special_requests: List[str] = Field(default_factory=list)
 
 # ---------------------------------------------------------
 # 🔹 Booking State Models
@@ -66,7 +72,8 @@ class HousekeepingState(BaseModel):
 
 class Complaint(BaseModel):
     complaint_id: str
-    category: str                          # complaint | compliment
+    category: str                    # complaint | compliment
+    description: str
     status: str = "Open"
     created_at: datetime
 

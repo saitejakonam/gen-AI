@@ -21,11 +21,20 @@ from src.agents.customer_service import customer_service_agent
 # 🔹 Routing Logic (SYNC by LangGraph design)
 # ---------------------------------------------------------
 
+def route_after_start(state: HotelState) -> str:
+    """
+    Route based on request intent.
+    """
+    if state.request.intent == "feedback":
+        return "customer_service"
+    return "booking"
+
+
 def route_after_booking(state: HotelState) -> str:
     """
     Decide next step after booking.
     """
-    if state.booking.status == "Confirmed":
+    if state.booking.status in {"Confirmed", "Modified"}:
         return "housekeeping"
     return "customer_service"
 
@@ -44,15 +53,20 @@ def route_after_housekeeping(state: HotelState) -> str:
 def build_graph():
     workflow = StateGraph(HotelState)
 
-    # Register async agents
     workflow.add_node("booking", booking_agent)
     workflow.add_node("housekeeping", housekeeping_agent)
     workflow.add_node("customer_service", customer_service_agent)
 
-    # Entry point
-    workflow.add_edge(START, "booking")
+    # Single START node with conditional routing
+    workflow.add_conditional_edges(
+        START,
+        route_after_start,
+        {
+            "booking": "booking",
+            "customer_service": "customer_service",
+        },
+    )
 
-    # Conditional routing after booking
     workflow.add_conditional_edges(
         "booking",
         route_after_booking,
@@ -62,10 +76,7 @@ def build_graph():
         },
     )
 
-    # Housekeeping always leads to customer service
     workflow.add_edge("housekeeping", "customer_service")
-
-    # End after customer service
     workflow.add_edge("customer_service", END)
 
     return workflow.compile()
@@ -80,85 +91,40 @@ async def main():
         prog="Hotel Management System",
         description=(
             "🏨 Multi-Agent Hotel Management System (Async, LangGraph)\n\n"
-            "This CLI application simulates a hotel workflow using async agents:\n\n"
+            "Agents:\n"
             "  • Booking Agent        → create / update / cancel bookings\n"
-            "  • Housekeeping Agent   → pre-checkin & post-checkout cleaning\n"
+            "  • Housekeeping Agent   → room preparation & cleanup\n"
             "  • Customer Service     → AI-powered guest communication\n\n"
-            "Key Design Principles:\n"
-            "  • Deterministic routing (no AI decisions)\n"
-            "  • Shared Pydantic state\n"
-            "  • EPAM DIAL used only for customer messaging\n"
+            "Examples:\n"
+            "  Booking:\n"
+            "    python -m src.main --action create --room-type Deluxe --nights 2\n\n"
+            "  Feedback only:\n"
+            "    python -m src.main --complaint \"Great service!\""
         ),
         formatter_class=argparse.RawTextHelpFormatter,
     )
 
     # -----------------------------
-    # Booking-related arguments
+    # Booking arguments
     # -----------------------------
 
-    parser.add_argument(
-        "--action",
-        choices=["create", "update", "cancel"],
-        default="create",
-        help=(
-            "Booking action to perform:\n"
-            "  create  → create a new booking (default)\n"
-            "  update  → modify an existing booking\n"
-            "  cancel  → cancel an existing booking"
-        ),
-    )
-
-    parser.add_argument(
-        "--booking-id",
-        type=str,
-        help="Booking ID (required for update or cancel actions)",
-    )
-
-    parser.add_argument(
-        "--customer",
-        type=str,
-        default="Alice Johnson",
-        help="Customer full name (default: Alice Johnson)",
-    )
-
-    parser.add_argument(
-        "--room-type",
-        choices=["Standard", "Deluxe", "Suite"],
-        default="Deluxe",
-        help="Room type to book (default: Deluxe)",
-    )
-
-    parser.add_argument(
-        "--nights",
-        type=int,
-        default=2,
-        help="Number of nights for the stay (default: 2)",
-    )
+    parser.add_argument("--action", choices=["create", "update", "cancel"], default="create")
+    parser.add_argument("--booking-id", type=str, help="Required for update or cancel")
+    parser.add_argument("--customer", type=str, default="Alice Johnson")
+    parser.add_argument("--room-type", choices=["Standard", "Deluxe", "Suite"], default="Deluxe")
+    parser.add_argument("--nights", type=int, default=2)
 
     # -----------------------------
-    # Customer Service arguments
+    # Customer service arguments
     # -----------------------------
 
-    parser.add_argument(
-        "--complaint",
-        type=str,
-        help=(
-            "Submit a customer complaint or compliment.\n"
-            "Examples:\n"
-            "  --complaint \"Room was not clean\"\n"
-            "  --complaint \"Great service!\""
-        ),
-    )
+    parser.add_argument("--complaint", type=str, help="Complaint or compliment")
 
     # -----------------------------
-    # Debug / utility flags
+    # Debug
     # -----------------------------
 
-    parser.add_argument(
-        "--debug",
-        action="store_true",
-        help="Enable debug output (prints full workflow state)",
-    )
+    parser.add_argument("--debug", action="store_true")
 
     args = parser.parse_args()
 
@@ -166,32 +132,45 @@ async def main():
     print("=" * 65)
 
     # -----------------------------
-    # Build typed request payload
+    # Detect intent
+    # -----------------------------
+
+    intent = "feedback" if args.complaint else "booking"
+
+    # Validation for update / cancel
+    if intent == "booking" and args.action in {"update", "cancel"} and not args.booking_id:
+        parser.error("--booking-id is required for update or cancel actions")
+
+    # -----------------------------
+    # Build typed request
     # -----------------------------
 
     request = RequestState(
-        action=args.action,
-        booking_id=args.booking_id,
+        intent=intent,
+        action=args.action if intent == "booking" else None,
+        booking_id=args.booking_id if intent == "booking" else None,
         customer=args.customer,
-        room_type=args.room_type,
-        nights=args.nights,
+        room_type=args.room_type if intent == "booking" else None,
+        nights=args.nights if intent == "booking" else None,
+        check_in=(
+            (datetime.now() + timedelta(days=1)).strftime("%Y-%m-%d")
+            if intent == "booking"
+            else None
+        ),
         complaint=args.complaint,
-        check_in=(datetime.now() + timedelta(days=1)).strftime("%Y-%m-%d"),
-        special_requests=["late_checkout", "extra_towels"],
+        special_requests=["late_checkout", "extra_towels"] if intent == "booking" else [],
     )
 
     if args.debug:
         print("📥 Input Request:")
         print(request.model_dump())
-        print("-" * 55)
+        print("-" * 65)
 
     # -----------------------------
-    # Initialize shared state
+    # Initialize state & run graph
     # -----------------------------
 
     initial_state = HotelState(request=request)
-
-    # Build & run LangGraph
     graph = build_graph()
     final_state: HotelState = await graph.ainvoke(initial_state)
 
@@ -203,11 +182,12 @@ async def main():
     print("📊 WORKFLOW RESULTS")
     print("=" * 65)
 
-    print("\n🛎️ Booking State:")
-    print(final_state["booking"].model_dump())
+    if intent == "booking":
+        print("\n🛎️ Booking State:")
+        print(final_state["booking"].model_dump())
 
-    print("\n🧹 Housekeeping State:")
-    print(final_state["housekeeping"].model_dump())
+        print("\n🧹 Housekeeping State:")
+        print(final_state["housekeeping"].model_dump())
 
     print("\n🎧 Customer Service Messages:")
     for msg in final_state["customer_service"].messages:

@@ -49,8 +49,9 @@ async def customer_service_agent(state: HotelState) -> HotelState:
 
                 complaint = Complaint(
                     complaint_id=complaint_id,
-                    type=customer_text,
+                    category="complaint",          # ✅ REQUIRED FIX
                     created_at=datetime.utcnow(),
+                    description=customer_text,
                     status="Open",
                 )
 

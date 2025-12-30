@@ -40,6 +40,10 @@ def save_booked_rooms(data: Dict):
 # ---------------------------------------------------------
 
 async def booking_agent(state: HotelState) -> HotelState:
+    if state.request.intent != "booking":
+        print("⏭️ Booking skipped (feedback-only request)")
+        return state
+    
     print("🏨 Booking Agent: Processing request...")
 
     try:
@@ -119,6 +123,7 @@ async def booking_agent(state: HotelState) -> HotelState:
                         "booking_id": booking_id,
                         "nights": nights,
                         "room_number": room,
+                        "check_in": data["check_in"],
                     }
 
                     state.booking.history.append(
