@@ -188,8 +188,6 @@ Create a `.env` file in the project root:
 
 - Date-based booking expiry
 
-- Booking cancellation
-
 - Database persistence
 
 - Concurrent booking safety
