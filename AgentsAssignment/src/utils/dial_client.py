@@ -1,0 +1,167 @@
+"""
+EPAM DIAL API Client for OpenAI access (Async-Enabled).
+
+This module provides both synchronous and asynchronous interfaces
+to interact with OpenAI models through EPAM's DIAL service.
+
+Async methods are implemented using asyncio.to_thread to safely
+wrap the AzureOpenAI synchronous SDK.
+"""
+
+import os
+import asyncio
+from typing import List, Dict, Optional
+from dotenv import load_dotenv
+from openai import AzureOpenAI
+
+load_dotenv()
+
+
+class DIALClient:
+    """
+    Client for interacting with EPAM DIAL API.
+
+    Sync methods are preserved.
+    Async wrappers are provided for LangGraph async agents.
+    """
+
+    def __init__(self, api_key: Optional[str] = None, model: str = "gpt-4"):
+        self.api_key = api_key or os.getenv("DIAL_API_KEY", "<YOUR_API_KEY_HERE>")
+        self.model = model
+        self.azure_endpoint = "https://ai-proxy.lab.epam.com"
+        self.api_version = "2024-02-01"
+
+        try:
+            if not self.api_key or self.api_key == "<YOUR_API_KEY_HERE>":
+                print("🚨 DIAL API Key not found. Please set DIAL_API_KEY.")
+                self.client = None
+                return
+
+            self.client = AzureOpenAI(
+                api_key=self.api_key,
+                api_version=self.api_version,
+                azure_endpoint=self.azure_endpoint
+            )
+            print("✅ DIAL Client initialized successfully!")
+
+        except Exception as e:
+            print(f"🔥 Error initializing DIAL client: {e}")
+            self.client = None
+
+    # ------------------------------------------------------------------
+    # 🔹 SYNCHRONOUS METHODS (UNCHANGED)
+    # ------------------------------------------------------------------
+
+    def get_completion(
+        self,
+        messages: List[Dict[str, str]],
+        model: Optional[str] = None
+    ) -> str:
+        if not self.client:
+            return "❌ DIAL client not properly initialized."
+
+        try:
+            response = self.client.chat.completions.create(
+                model=model or self.model,
+                messages=messages,
+                temperature=float(os.getenv("DIAL_TEMPERATURE", "0.7"))
+            )
+            return response.choices[0].message.content
+
+        except Exception as e:
+            return f"❌ Error calling DIAL API: {e}"
+
+    def analyze_sentiment(self, text: str) -> str:
+        messages = [
+            {
+                "role": "system",
+                "content": (
+                    "You are a sentiment analysis expert. "
+                    "Respond with POSITIVE, NEGATIVE, or NEUTRAL "
+                    "and a brief explanation."
+                )
+            },
+            {
+                "role": "user",
+                "content": f"Analyze the sentiment of this text: '{text}'"
+            }
+        ]
+        return self.get_completion(messages)
+
+    def generate_response(self, context: str, customer_query: str) -> str:
+        messages = [
+            {
+                "role": "system",
+                "content": (
+                    "You are a helpful hotel customer service agent. "
+                    "Provide friendly, professional responses."
+                    "your name is Konam."
+                    "The hotel name is Stay Inn."
+                )
+            },
+            {
+                "role": "user",
+                "content": (
+                    f"Context:\n{context}\n\n"
+                    f"Customer Query:\n{customer_query}\n\n"
+                    "Provide a helpful response:"
+                )
+            }
+        ]
+        return self.get_completion(messages)
+
+    # ------------------------------------------------------------------
+    # 🔹 ASYNC WRAPPERS (FOR LANGGRAPH AGENTS)
+    # ------------------------------------------------------------------
+
+    async def get_completion_async(
+        self,
+        messages: List[Dict[str, str]],
+        model: Optional[str] = None
+    ) -> str:
+        return await asyncio.to_thread(
+            self.get_completion,
+            messages,
+            model
+        )
+
+    async def analyze_sentiment_async(self, text: str) -> str:
+        return await asyncio.to_thread(
+            self.analyze_sentiment,
+            text
+        )
+
+    async def generate_response_async(
+        self,
+        context: str,
+        customer_query: str
+    ) -> str:
+        return await asyncio.to_thread(
+            self.generate_response,
+            context,
+            customer_query
+        )
+
+
+# ------------------------------------------------------------------
+# 🧪 ASYNC TEST (OPTIONAL)
+# ------------------------------------------------------------------
+
+async def test_dial_connection_async():
+    print("🧪 Testing DIAL API connection (async)...")
+
+    client = DIALClient()
+
+    if not client.client:
+        print("❌ DIAL client initialization failed")
+        return
+
+    response = await client.get_completion_async(
+        [{"role": "user", "content": "Explain technical debt in one sentence."}]
+    )
+
+    print(f"📝 Async Test Response: {response}")
+
+
+if __name__ == "__main__":
+    asyncio.run(test_dial_connection_async())
