@@ -42,15 +42,23 @@ The system simulates a real-world hotel workflow with clear separation of concer
 
 ---
 
-## 🔁 Workflow
+## 🔁 Workflow (LangGraph Orchestration)
 
-START
-↓
-Booking Agent
-↓
-[Booking Confirmed?]
-├─ Yes → Housekeeping Agent → Customer Service Agent → END
-└─ No → Customer Service Agent → END
+```mermaid
+graph TD
+    A([START]) --> B[Booking Agent]
+    B --> C{Booking Confirmed?}
+    
+    C -- Yes --> D[Housekeeping Agent]
+    D --> E[Customer Service Agent]
+    
+    C -- No --> E
+    
+    E --> F([END])
+    
+    style A fill:#f9f,stroke:#333,stroke-width:2px
+    style F fill:#f9f,stroke:#333,stroke-width:2px
+    style C fill:#fff4dd,stroke:#d4a017,stroke-width:2px
 
 
 If booking fails, the workflow routes directly to **Customer Service**.
