@@ -1,58 +1,108 @@
 """
-Housekeeping Agent (Async)
+Housekeeping Agent
 
-Handles room preparation and readiness after booking confirmation.
+Responsibilities:
+- Prepare rooms after confirmed bookings
+- Update room status
+- Create cleaning schedules
+- Handle post-checkout cleanup
 """
 
-from src.models.state import HotelState
+from datetime import datetime, timedelta
+from src.models.state import (
+    HotelState,
+    CleaningTask,
+)
 
 
 # ---------------------------------------------------------
-# 🔹 Async Housekeeping Agent
+# 🔹 Helper: Check if checkout has passed
+# ---------------------------------------------------------
+
+def is_checkout_passed(check_in: str, nights: int) -> bool:
+    """
+    Determines whether the checkout time has passed.
+    """
+    checkout_time = datetime.fromisoformat(check_in) + timedelta(days=nights)
+    return datetime.utcnow() > checkout_time
+
+
+# ---------------------------------------------------------
+# 🔹 Housekeeping Agent (ASYNC)
 # ---------------------------------------------------------
 
 async def housekeeping_agent(state: HotelState) -> HotelState:
-    """
-    Async Housekeeping Agent.
-
-    Responsibilities:
-    - Check booking status
-    - Prepare room if booking is confirmed
-    - Update housekeeping state deterministically
-    """
-
-    print("🧹 Housekeeping Agent: Checking room status...")
+    print("🧹 Housekeeping Agent: Processing room status...")
 
     try:
-        # -------------------------------------------------
-        # Skip if booking failed
-        # -------------------------------------------------
-        if state.booking.status != "Confirmed":
-            state.housekeeping.status = "Skipped"
-            state.housekeeping.room_ready = False
+        booking = state.booking
 
-            print("ℹ️ Housekeeping skipped (booking not confirmed)")
-            state.workflow_step = 2
+        # -------------------------------------------------
+        # 🔹 Skip if booking not active
+        # -------------------------------------------------
+        if booking.status not in {"Confirmed", "Modified"}:
+            state.housekeeping.room_status = "Skipped"
+            print("⏭️ Housekeeping skipped (booking inactive)")
+            return state
+
+        details = booking.details
+        room_number = details.get("room_number")
+        check_in = details.get("check_in")
+        nights = int(details.get("nights", 1))
+
+        if not room_number or not check_in:
+            state.errors.append("Housekeeping error: Missing booking details")
+            state.housekeeping.room_status = "Skipped"
             return state
 
         # -------------------------------------------------
-        # Prepare Room (Mock Logic)
+        # 🔹 POST-CHECKOUT CLEANUP
         # -------------------------------------------------
-        booking_details = state.booking.details
-        room_number = booking_details.get("room_number")
+        if is_checkout_passed(check_in, nights):
+            print(f"🧾 Checkout passed for room {room_number}. Scheduling cleanup.")
 
-        # Simulate successful cleaning
-        state.housekeeping.status = "Cleaned"
-        state.housekeeping.room_ready = True
+            state.housekeeping.room_status = "Dirty"
 
-        print(f"✅ Room {room_number} cleaned and ready")
+            cleaning_task = CleaningTask(
+                room_number=room_number,
+                scheduled_at=datetime.utcnow(),
+                priority="High",
+                assigned_staff="HK-STAFF-02",
+            )
+            state.housekeeping.schedule.append(cleaning_task)
 
-    except Exception as exc:
-        state.housekeeping.status = "Pending"
-        state.housekeeping.room_ready = False
-        state.errors.append(f"Housekeeping agent error: {exc}")
+            state.housekeeping.room_status = "Cleaning"
+            state.housekeeping.room_status = "Cleaned"
+            state.housekeeping.room_ready = True
+            state.housekeeping.status = "Post-checkout cleaned"
 
-        print(f"❌ Housekeeping Agent error: {exc}")
+            print(f"✅ Post-checkout cleaning completed for room {room_number}")
+            return state
 
-    state.workflow_step = 2
+        # -------------------------------------------------
+        # 🔹 PRE-CHECK-IN PREPARATION
+        # -------------------------------------------------
+        if state.housekeeping.room_status != "Cleaned":
+            state.housekeeping.room_status = "Dirty"
+
+            cleaning_task = CleaningTask(
+                room_number=room_number,
+                scheduled_at=datetime.utcnow() + timedelta(minutes=30),
+                priority="Normal",
+                assigned_staff="HK-STAFF-01",
+            )
+            state.housekeeping.schedule.append(cleaning_task)
+
+            state.housekeeping.room_status = "Cleaning"
+            state.housekeeping.room_status = "Cleaned"
+            state.housekeeping.room_ready = True
+            state.housekeeping.room_status = "Cleaned"
+
+            print(f"✅ Room {room_number} cleaned and ready")
+
+    except Exception as e:
+        state.errors.append(f"Housekeeping error: {str(e)}")
+        state.housekeeping.room_status = "Failed"
+        print(f"🔥 Housekeeping Agent error: {e}")
+
     return state

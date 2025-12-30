@@ -28,9 +28,9 @@ The system simulates a real-world hotel workflow with clear separation of concer
 
 | Agent | Responsibility |
 |------|---------------|
-| **Booking Agent** | Checks availability, prevents double booking, creates reservations |
-| **Housekeeping Agent** | Prepares rooms after confirmed bookings |
-| **Customer Service Agent** | Generates customer-facing responses using EPAM DIAL |
+| **Booking Agent** | Checks availability, prevents double booking, Create, update, cancel bookings |
+| **Housekeeping Agent** | Pre-check-in & post-checkout cleaning |
+| **Customer Service Agent** | Complaints, compliments, AI-generated responses |
 
 ---
 
@@ -46,16 +46,22 @@ The system simulates a real-world hotel workflow with clear separation of concer
 
 ```mermaid
 flowchart TD
-    START --> BA[Booking Agent]
-    BA --> DEC{Booking Confirmed?}
-    DEC -->|Yes| HK[Housekeeping Agent]
-    HK --> CS[Customer Service Agent]
-    DEC -->|No| CS
-    CS --> END
+    A([START]) --> B[Booking Agent]
+    B --> C{Booking Confirmed?}
+
+    C -- Yes --> D[Housekeeping Agent]
+    D --> E[Customer Service Agent]
+
+    C -- No --> E
+
+    E --> F([END])
 ```
 
-If booking fails, the workflow routes directly to **Customer Service**.
+- If booking is confirmed or modified → Housekeeping → Customer Service
 
+- If booking fails or is cancelled → Customer Service directly
+
+- Workflow always ends after Customer Service
 ---
 
 ## 🧠 State Management
@@ -88,14 +94,23 @@ To prevent double booking across multiple runs, the system uses **JSON-based per
 
 ---
 
-## ⚠️ Intentional Limitations
+## 🧠 Shared State Design
 
-The following limitations are **intentional and acceptable** for this assignment:
+- The system uses a single shared HotelState passed across all agents.
 
-- Bookings do **not expire automatically**
-- No date-based availability logic
-- No concurrency locking
-- JSON persistence is local to the project
+- Key State Sections
+
+- RequestState → normalized user input (CLI-driven)
+
+- BookingState → booking status, details, history
+
+- HousekeepingState → room status & cleaning schedule
+
+- CustomerServiceState → messages, complaints, resolutions
+
+- errors → centralized error tracking
+
+- Each agent mutates only its own sub-state, ensuring: Predictability, Debuggability, Clean separation of concerns
 
 ### Design Rationale
 

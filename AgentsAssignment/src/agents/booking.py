@@ -1,136 +1,172 @@
 """
-Booking Agent (Async)
+Booking Agent
 
-Handles room availability checks and booking creation.
-Prevents double-booking using JSON-based persistence.
+Responsibilities:
+- Create booking
+- Update booking
+- Cancel booking
+- Enforce room availability
+- Maintain booking history
 """
 
-import uuid
 import json
-from datetime import datetime
-from typing import Dict, List
+import uuid
 from pathlib import Path
+from datetime import datetime
+from typing import Dict
 
-from src.models.state import HotelState
+from src.models.state import HotelState, BookingHistoryEntry
 
-
-# ---------------------------------------------------------
-# 🔹 Mock Data
-# ---------------------------------------------------------
-
-AVAILABLE_ROOMS: Dict[str, List[str]] = {
-    "Standard": ["101", "102", "103"],
-    "Deluxe": ["201", "202"],
-    "Suite": ["301"],
-}
-
-ROOM_PRICING = {
-    "Standard": 150,
-    "Deluxe": 250,
-    "Suite": 400,
-}
-
-# ---------------------------------------------------------
-# 🔹 Persistence Setup
-# ---------------------------------------------------------
-
-DATA_DIR = Path("src/data")
-DATA_DIR.mkdir(exist_ok=True)
-
-BOOKED_ROOMS_FILE = DATA_DIR / "booked_rooms.json"
-
-
-def load_booked_rooms() -> set:
-    if not BOOKED_ROOMS_FILE.exists():
-        return set()
-
-    try:
-        with open(BOOKED_ROOMS_FILE, "r") as f:
-            return set(json.load(f))
-    except Exception:
-        return set()
-
-
-def save_booked_rooms(booked_rooms: set) -> None:
-    with open(BOOKED_ROOMS_FILE, "w") as f:
-        json.dump(sorted(booked_rooms), f, indent=2)
-
-
-# Load booked rooms at startup
-BOOKED_ROOMS = load_booked_rooms()
+DATA_FILE = Path("src/data/booked_rooms.json")
 
 
 # ---------------------------------------------------------
-# 🔹 Async Booking Agent
+# 🔹 Persistence Helpers
+# ---------------------------------------------------------
+
+def load_booked_rooms() -> Dict:
+    if not DATA_FILE.exists():
+        return {}
+    return json.loads(DATA_FILE.read_text())
+
+
+def save_booked_rooms(data: Dict):
+    DATA_FILE.parent.mkdir(parents=True, exist_ok=True)
+    DATA_FILE.write_text(json.dumps(data, indent=2))
+
+
+# ---------------------------------------------------------
+# 🔹 Booking Agent (ASYNC)
 # ---------------------------------------------------------
 
 async def booking_agent(state: HotelState) -> HotelState:
-    print("🏨 Booking Agent: Processing reservation request...")
+    print("🏨 Booking Agent: Processing request...")
 
     try:
         request = state.request
+        action = request.action  # create | update | cancel
+        room_type = request.room_type
+        nights = request.nights or 1
+        customer = request.customer
+        check_in = request.check_in
+        booking_id = request.booking_id
 
-        customer = request.get("customer")
-        room_type = request.get("room_type", "Standard")
-        nights = int(request.get("nights", 1))
-        check_in = request.get(
-            "check_in",
-            datetime.now().strftime("%Y-%m-%d")
-        )
+        available_rooms = {
+            "Standard": ["101", "102", "103"],
+            "Deluxe": ["201", "202"],
+            "Suite": ["301"],
+        }
+
+        booked_rooms = load_booked_rooms()
 
         # -------------------------------------------------
-        # Availability Check (Exclude Persisted Bookings)
+        # 🔹 CREATE BOOKING
         # -------------------------------------------------
-        available_rooms = [
-            room for room in AVAILABLE_ROOMS.get(room_type, [])
-            if room not in BOOKED_ROOMS
-        ]
+        if action == "create":
+            for room in available_rooms.get(room_type, []):
+                if room not in booked_rooms:
+                    booking_id = f"BK{uuid.uuid4().hex[:8].upper()}"
 
-        if not available_rooms:
+                    booked_rooms[room] = {
+                        "booking_id": booking_id,
+                        "check_in": check_in,
+                        "nights": nights,
+                    }
+                    save_booked_rooms(booked_rooms)
+
+                    state.booking.status = "Confirmed"
+                    state.booking.details = {
+                        "booking_id": booking_id,
+                        "customer": customer,
+                        "room_type": room_type,
+                        "room_number": room,
+                        "check_in": check_in,
+                        "nights": nights,
+                        "total_cost": 250 * nights if room_type != "Standard" else 150 * nights,
+                        "created_at": datetime.utcnow().isoformat(),
+                    }
+
+                    state.booking.history.append(
+                        BookingHistoryEntry(
+                            action="created",
+                            timestamp=datetime.utcnow(),
+                            details=state.booking.details,
+                        )
+                    )
+
+                    print(f"✅ Booking confirmed: {booking_id} | Room {room}")
+                    return state
+
+            # No room available
             state.booking.status = "Failed"
-            state.booking.details = {
-                "reason": f"All {room_type} rooms are already booked"
-            }
-            state.errors.append(f"No available {room_type} rooms")
-
-            print(f"❌ Booking failed: All {room_type} rooms are already booked")
-            state.workflow_step = 1
+            state.errors.append(f"No {room_type} rooms available")
+            print(f"❌ No {room_type} rooms available")
             return state
 
         # -------------------------------------------------
-        # Create Booking
+        # 🔹 UPDATE BOOKING
         # -------------------------------------------------
-        booking_id = f"BK{uuid.uuid4().hex[:8].upper()}"
-        room_number = available_rooms[0]
+        if action == "update":
+            booking_id = request.booking_id   # ✅ FIX
 
-        total_cost = ROOM_PRICING.get(room_type, 150) * nights
+            for room, data in booked_rooms.items():
+                if data["booking_id"] == booking_id:
+                    data["nights"] = nights
+                    save_booked_rooms(booked_rooms)
 
-        # Persist booking
-        BOOKED_ROOMS.add(room_number)
-        save_booked_rooms(BOOKED_ROOMS)
+                    state.booking.status = "Modified"
+                    state.booking.details = {
+                        "booking_id": booking_id,
+                        "nights": nights,
+                        "room_number": room,
+                    }
 
-        state.booking.status = "Confirmed"
-        state.booking.details = {
-            "booking_id": booking_id,
-            "customer": customer,
-            "room_type": room_type,
-            "room_number": room_number,
-            "check_in": check_in,
-            "nights": nights,
-            "total_cost": total_cost,
-            "created_at": datetime.now().isoformat(),
-        }
+                    state.booking.history.append(
+                        BookingHistoryEntry(
+                            action="updated",
+                            timestamp=datetime.utcnow(),
+                            details={"nights": str(nights)},
+                        )
+                    )
 
-        print(f"✅ Booking confirmed: {booking_id}")
-        print(f"   Room: {room_type} #{room_number}")
-        print(f"   💾 Room {room_number} persisted as booked")
+                    print(f"🔄 Booking updated: {booking_id}")
+                    return state
 
-    except Exception as exc:
+            state.booking.status = "Failed"
+            state.errors.append("Booking not found")
+            return state
+
+        # -------------------------------------------------
+        # 🔹 CANCEL BOOKING
+        # -------------------------------------------------
+        if action == "cancel":
+            booking_id = request.booking_id   # ✅ FIX
+
+            for room in list(booked_rooms.keys()):
+                if booked_rooms[room]["booking_id"] == booking_id:
+                    del booked_rooms[room]
+                    save_booked_rooms(booked_rooms)
+
+                    state.booking.status = "Cancelled"
+
+                    state.booking.history.append(
+                        BookingHistoryEntry(
+                            action="cancelled",
+                            timestamp=datetime.utcnow(),
+                            details={"booking_id": booking_id},
+                        )
+                    )
+
+                    print(f"❌ Booking cancelled: {booking_id}")
+                    return state
+
+            state.booking.status = "Failed"
+            state.errors.append("Booking not found")
+            return state
+
+    except Exception as e:
+        state.errors.append(str(e))
         state.booking.status = "Failed"
-        state.booking.details = {"error": str(exc)}
-        state.errors.append(f"Booking agent error: {exc}")
+        print(f"🔥 Booking Agent error: {e}")
 
-        print(f"❌ Booking Agent error: {exc}")
-
-    state.workflow_step = 1
     return state

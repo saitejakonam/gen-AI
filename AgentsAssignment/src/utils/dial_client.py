@@ -21,8 +21,8 @@ class DIALClient:
     """
     Client for interacting with EPAM DIAL API.
 
-    Sync methods are preserved.
-    Async wrappers are provided for LangGraph async agents.
+    - Sync methods preserved (for simple usage)
+    - Async wrappers provided (for LangGraph async agents)
     """
 
     def __init__(self, api_key: Optional[str] = None, model: str = "gpt-4"):
@@ -40,22 +40,23 @@ class DIALClient:
             self.client = AzureOpenAI(
                 api_key=self.api_key,
                 api_version=self.api_version,
-                azure_endpoint=self.azure_endpoint
+                azure_endpoint=self.azure_endpoint,
             )
+
             print("✅ DIAL Client initialized successfully!")
 
         except Exception as e:
             print(f"🔥 Error initializing DIAL client: {e}")
             self.client = None
 
-    # ------------------------------------------------------------------
-    # 🔹 SYNCHRONOUS METHODS (UNCHANGED)
-    # ------------------------------------------------------------------
+    # ==========================================================
+    # 🔹 SYNCHRONOUS METHODS
+    # ==========================================================
 
     def get_completion(
         self,
         messages: List[Dict[str, str]],
-        model: Optional[str] = None
+        model: Optional[str] = None,
     ) -> str:
         if not self.client:
             return "❌ DIAL client not properly initialized."
@@ -64,88 +65,99 @@ class DIALClient:
             response = self.client.chat.completions.create(
                 model=model or self.model,
                 messages=messages,
-                temperature=float(os.getenv("DIAL_TEMPERATURE", "0.7"))
+                temperature=float(os.getenv("DIAL_TEMPERATURE", "0.7")),
             )
             return response.choices[0].message.content
 
         except Exception as e:
             return f"❌ Error calling DIAL API: {e}"
 
-    def analyze_sentiment(self, text: str) -> str:
-        messages = [
-            {
-                "role": "system",
-                "content": (
-                    "You are a sentiment analysis expert. "
-                    "Respond with POSITIVE, NEGATIVE, or NEUTRAL "
-                    "and a brief explanation."
-                )
-            },
-            {
-                "role": "user",
-                "content": f"Analyze the sentiment of this text: '{text}'"
-            }
-        ]
-        return self.get_completion(messages)
-
     def generate_response(self, context: str, customer_query: str) -> str:
+        """
+        Generate a customer-facing response.
+        """
         messages = [
             {
                 "role": "system",
                 "content": (
-                    "You are a helpful hotel customer service agent. "
-                    "Provide friendly, professional responses."
-                    "your name is Konam."
-                    "The hotel name is Stay Inn."
-                )
+                    "You are a professional hotel customer service agent.\n"
+                    "Your name is Konam.\n"
+                    "Hotel name: Stay Inn.\n"
+                    "Be polite, calm, and helpful."
+                ),
             },
             {
                 "role": "user",
                 "content": (
                     f"Context:\n{context}\n\n"
-                    f"Customer Query:\n{customer_query}\n\n"
-                    "Provide a helpful response:"
-                )
-            }
+                    f"Customer Message:\n{customer_query}\n\n"
+                    "Respond professionally:"
+                ),
+            },
         ]
         return self.get_completion(messages)
 
-    # ------------------------------------------------------------------
-    # 🔹 ASYNC WRAPPERS (FOR LANGGRAPH AGENTS)
-    # ------------------------------------------------------------------
+    def classify_intent(self, text: str) -> str:
+        """
+        Classify customer intent deterministically.
+
+        Returns:
+            COMPLAINT | COMPLIMENT | OTHER
+        """
+        messages = [
+            {
+                "role": "system",
+                "content": (
+                    "Classify customer intent.\n"
+                    "Respond with ONLY one word:\n"
+                    "COMPLAINT, COMPLIMENT."
+                ),
+            },
+            {
+                "role": "user",
+                "content": text,
+            },
+        ]
+
+        result = self.get_completion(messages)
+        return result.strip().upper()
+
+    # ==========================================================
+    # 🔹 ASYNC WRAPPERS (FOR LANGGRAPH)
+    # ==========================================================
 
     async def get_completion_async(
         self,
         messages: List[Dict[str, str]],
-        model: Optional[str] = None
+        model: Optional[str] = None,
     ) -> str:
         return await asyncio.to_thread(
             self.get_completion,
             messages,
-            model
-        )
-
-    async def analyze_sentiment_async(self, text: str) -> str:
-        return await asyncio.to_thread(
-            self.analyze_sentiment,
-            text
+            model,
         )
 
     async def generate_response_async(
         self,
         context: str,
-        customer_query: str
+        customer_query: str,
     ) -> str:
         return await asyncio.to_thread(
             self.generate_response,
             context,
-            customer_query
+            customer_query,
+        )
+
+    async def classify_intent_async(self, text: str) -> str:
+        return await asyncio.to_thread(
+            self.classify_intent,
+            text,
         )
 
 
-# ------------------------------------------------------------------
+# ==========================================================
 # 🧪 ASYNC TEST (OPTIONAL)
-# ------------------------------------------------------------------
+# ==========================================================
 
 async def test_dial_connection_async():
     print("🧪 Testing DIAL API connection (async)...")
@@ -160,7 +172,12 @@ async def test_dial_connection_async():
         [{"role": "user", "content": "Explain technical debt in one sentence."}]
     )
 
-    print(f"📝 Async Test Response: {response}")
+    intent = await client.classify_intent_async(
+        "The room was dirty and AC was not working."
+    )
+
+    print(f"📝 Async Response: {response}")
+    print(f"🧠 Classified Intent: {intent}")
 
 
 if __name__ == "__main__":
