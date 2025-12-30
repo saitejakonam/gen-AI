@@ -44,22 +44,15 @@ The system simulates a real-world hotel workflow with clear separation of concer
 
 ## 🔁 Workflow
 
+```mermaid
 flowchart TD
-    START([START])
-    BA[Booking Agent]
-    DEC{Booking Confirmed?}
-    HK[Housekeeping Agent]
-    CS[Customer Service Agent]
-    END([END])
-
-    START --> BA
-    BA --> DEC
-    DEC -- Yes --> HK
-    HK --> CS
-    DEC -- No --> CS
+    START --> BA[Booking Agent]
+    BA --> DEC{Booking Confirmed?}
+    DEC -->|Yes| HK[Housekeeping Agent]
+    HK --> CS[Customer Service Agent]
+    DEC -->|No| CS
     CS --> END
-
-
+```
 
 If booking fails, the workflow routes directly to **Customer Service**.
 
